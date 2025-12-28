@@ -1,53 +1,96 @@
-variable "aws_region" {
+﻿variable "aws_region" {
   description = "AWS region"
   type        = string
-  default     = "us-east-1"
+  default     = "ap-south-1"
 }
 
 variable "project_name" {
-  description = "Project name"
+  description = "Project name prefix for resources"
   type        = string
   default     = "strapi-ecs"
 }
 
-variable "environment" {
-  description = "Environment name"
-  type        = string
-  default     = "production"
-}
-
 variable "container_port" {
-  description = "Container port"
+  description = "Container port for Strapi"
   type        = number
   default     = 1337
 }
 
-variable "ecr_repository_name" {
-  description = "ECR repository name"
-  type        = string
-  default     = "strapi-app"
-}
-
 variable "task_cpu" {
-  description = "Task CPU units"
+  description = "CPU units for ECS task"
   type        = string
   default     = "512"
 }
 
 variable "task_memory" {
-  description = "Task memory in MB"
+  description = "Memory for ECS task"
   type        = string
   default     = "1024"
 }
 
 variable "desired_count" {
-  description = "Desired number of tasks"
+  description = "Number of ECS task replicas"
   type        = number
   default     = 1
+}
+
+variable "aws_ecr_repo_name" {
+  description = "Name of existing ECR repository"
+  type        = string
+  default     = "dee-strapi"
+}
+
+variable "ecs_execution_role_name" {
+  description = "Name of existing ECS execution IAM role"
+  type        = string
+  default     = "strapi-ecs-ecs-execution-role"
+}
+
+variable "ecs_task_role_name" {
+  description = "Name of existing ECS task IAM role"
+  type        = string
+  default     = "strapi-ecs-ecs-task-role"
+}
+
+variable "database_client" {
+  description = "Database client (sqlite, postgres, mysql)"
+  type        = string
+  default     = "postgres"
+}
+
+variable "database_host" {
+  description = "Database host"
+  type        = string
+  default     = ""
+}
+
+variable "database_port" {
+  description = "Database port"
+  type        = string
+  default     = "5432"
+}
+
+variable "database_name" {
+  description = "Database name"
+  type        = string
+  default     = "strapi"
+}
+
+variable "database_username" {
+  description = "Database username"
+  type        = string
+  default     = "strapi"
 }
 
 variable "database_password" {
   description = "Database password"
   type        = string
+  default     = ""
   sensitive   = true
+}
+
+variable "ecs_service_name" {
+  description = "ECS service name"
+  type        = string
+  default     = "strapi-ecs-service"
 }

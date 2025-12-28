@@ -1,10 +1,9 @@
-terraform {
-  required_version = ">= 1.0"
-  
+﻿terraform {
+  required_version = ">= 1.5.0"
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = ">= 5.0"
     }
   }
 }
@@ -13,29 +12,57 @@ provider "aws" {
   region = var.aws_region
 }
 
-# Data sources
-data "aws_availability_zones" "available" {
-  state = "available"
+# Use default VPC
+data "aws_vpc" "default" {
+  default = true
 }
 
-# ECR Repository
-resource "aws_ecr_repository" "strapi" {
-  name                 = var.ecr_repository_name
-  image_tag_mutability = "MUTABLE"
+# Get all subnets in default VPC
+data "aws_subnets" "default" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
+}
 
-  image_scanning_configuration {
-    scan_on_push = true
+# Get subnet details
+data "aws_subnet" "default" {
+  for_each = toset(data.aws_subnets.default.ids)
+  id       = each.value
+}
+
+# Reference existing ECR repository
+data "aws_ecr_repository" "strapi" {
+  name = var.aws_ecr_repo_name
+}
+
+# ECS Cluster
+resource "aws_ecs_cluster" "main" {
+  name = "${var.project_name}-cluster"
+
+  setting {
+    name  = "containerInsights"
+    value = "enabled"
   }
 
   tags = {
-    Name        = "${var.project_name}-ecr"
-    Environment = var.environment
+    Name = "${var.project_name}-cluster"
+  }
+}
+
+# CloudWatch Log Group
+resource "aws_cloudwatch_log_group" "strapi" {
+  name              = "/ecs/${var.project_name}"
+  retention_in_days = 7
+
+  tags = {
+    Name = "${var.project_name}-logs"
   }
 }
 
 # ECR Lifecycle Policy
 resource "aws_ecr_lifecycle_policy" "strapi" {
-  repository = aws_ecr_repository.strapi.name
+  repository = data.aws_ecr_repository.strapi.name
 
   policy = jsonencode({
     rules = [{

@@ -1,0 +1,15 @@
+﻿aws_region               = "ap-south-1"
+project_name             = "strapi-ecs"
+container_port           = 1337
+task_cpu                 = "512"
+task_memory              = "1024"
+desired_count            = 1
+aws_ecr_repo_name        = "dee-strapi"
+ecs_execution_role_name  = "strapi-ecs-ecs-execution-role"
+ecs_task_role_name       = "strapi-ecs-ecs-task-role"
+database_client          = "postgres"
+database_port            = "5432"
+database_name            = "strapi"
+database_username        = "strapi"
+database_password        = "Password123"
+ecs_service_name         = "strapi-ecs-service"

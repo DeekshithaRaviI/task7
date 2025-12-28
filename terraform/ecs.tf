@@ -1,32 +1,6 @@
-# ECS Cluster
-resource "aws_ecs_cluster" "main" {
-  name = "${var.project_name}-cluster"
-
-  setting {
-    name  = "containerInsights"
-    value = "enabled"
-  }
-
-  tags = {
-    Name        = "${var.project_name}-cluster"
-    Environment = var.environment
-  }
-}
-
-# CloudWatch Log Group
-resource "aws_cloudwatch_log_group" "strapi" {
-  name              = "/ecs/${var.project_name}"
-  retention_in_days = 7
-
-  tags = {
-    Name        = "${var.project_name}-logs"
-    Environment = var.environment
-  }
-}
-
-# ECS Task Execution Role
+# IAM Role for ECS Task Execution
 resource "aws_iam_role" "ecs_task_execution_role" {
-  name = "${var.project_name}-ecs-task-execution-role"
+  name = var.ecs_execution_role_name
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -40,8 +14,7 @@ resource "aws_iam_role" "ecs_task_execution_role" {
   })
 
   tags = {
-    Name        = "${var.project_name}-ecs-task-execution-role"
-    Environment = var.environment
+    Name = var.ecs_execution_role_name
   }
 }
 
@@ -50,9 +23,9 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution_role_policy" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-# ECS Task Role
+# IAM Role for ECS Task
 resource "aws_iam_role" "ecs_task_role" {
-  name = "${var.project_name}-ecs-task-role"
+  name = var.ecs_task_role_name
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -66,19 +39,17 @@ resource "aws_iam_role" "ecs_task_role" {
   })
 
   tags = {
-    Name        = "${var.project_name}-ecs-task-role"
-    Environment = var.environment
+    Name = var.ecs_task_role_name
   }
 }
 
 # RDS Subnet Group
 resource "aws_db_subnet_group" "main" {
   name       = "${var.project_name}-db-subnet-group"
-  subnet_ids = aws_subnet.private[*].id
+  subnet_ids = data.aws_subnets.default.ids
 
   tags = {
-    Name        = "${var.project_name}-db-subnet-group"
-    Environment = var.environment
+    Name = "${var.project_name}-db-subnet-group"
   }
 }
 
@@ -86,21 +57,86 @@ resource "aws_db_subnet_group" "main" {
 resource "aws_db_instance" "postgres" {
   identifier             = "${var.project_name}-postgres"
   engine                 = "postgres"
-  engine_version         = "15.4"
+  engine_version         = "15"
   instance_class         = "db.t3.micro"
   allocated_storage      = 20
   storage_type           = "gp3"
-  db_name                = "strapi"
-  username               = "strapi"
+  db_name                = var.database_name
+  username               = var.database_username
   password               = var.database_password
   db_subnet_group_name   = aws_db_subnet_group.main.name
   vpc_security_group_ids = [aws_security_group.rds.id]
   skip_final_snapshot    = true
   publicly_accessible    = false
+  backup_retention_period = 0
 
   tags = {
-    Name        = "${var.project_name}-postgres"
-    Environment = var.environment
+    Name = "${var.project_name}-postgres"
+  }
+}
+
+# ALB Target Group
+resource "aws_lb_target_group" "strapi" {
+  name        = "${var.project_name}-tg"
+  port        = var.container_port
+  protocol    = "HTTP"
+  vpc_id      = data.aws_vpc.default.id
+  target_type = "ip"
+
+  health_check {
+    enabled             = true
+    healthy_threshold   = 2
+    interval            = 30
+    matcher             = "200"
+    path                = "/_health"
+    port                = "traffic-port"
+    protocol            = "HTTP"
+    timeout             = 5
+    unhealthy_threshold = 3
+  }
+
+  tags = {
+    Name = "${var.project_name}-tg"
+  }
+}
+
+# Get unique public subnets across different AZs - FIXED
+locals {
+  # Group subnets by AZ and take first subnet from each AZ
+  public_subnets_grouped = {
+    for s in data.aws_subnet.default : 
+    s.availability_zone => s.id...
+    if s.map_public_ip_on_launch
+  }
+  
+  # Take one subnet per AZ
+  unique_public_subnets = [
+    for az, subnet_ids in local.public_subnets_grouped : subnet_ids[0]
+  ]
+}
+
+# Application Load Balancer
+resource "aws_lb" "main" {
+  name               = "${var.project_name}-alb"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.alb.id]
+  subnets            = local.unique_public_subnets
+
+  tags = {
+    Name = "${var.project_name}-alb"
+  }
+}
+
+# ALB Listener
+resource "aws_lb_listener" "http" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.strapi.arn
   }
 }
 
@@ -116,7 +152,7 @@ resource "aws_ecs_task_definition" "strapi" {
 
   container_definitions = jsonencode([{
     name  = "strapi"
-    image = "${aws_ecr_repository.strapi.repository_url}:latest"
+    image = "${data.aws_ecr_repository.strapi.repository_url}:latest"
     
     portMappings = [{
       containerPort = var.container_port
@@ -124,50 +160,17 @@ resource "aws_ecs_task_definition" "strapi" {
     }]
 
     environment = [
-      {
-        name  = "NODE_ENV"
-        value = "production"
-      },
-      {
-        name  = "DATABASE_CLIENT"
-        value = "postgres"
-      },
-      {
-        name  = "DATABASE_HOST"
-        value = aws_db_instance.postgres.address
-      },
-      {
-        name  = "DATABASE_PORT"
-        value = "5432"
-      },
-      {
-        name  = "DATABASE_NAME"
-        value = "strapi"
-      },
-      {
-        name  = "DATABASE_USERNAME"
-        value = "strapi"
-      },
-      {
-        name  = "DATABASE_PASSWORD"
-        value = var.database_password
-      },
-      {
-        name  = "APP_KEYS"
-        value = "toBeModified1,toBeModified2"
-      },
-      {
-        name  = "API_TOKEN_SALT"
-        value = "toBeModified"
-      },
-      {
-        name  = "ADMIN_JWT_SECRET"
-        value = "toBeModified"
-      },
-      {
-        name  = "JWT_SECRET"
-        value = "toBeModified"
-      }
+      { name = "NODE_ENV", value = "production" },
+      { name = "DATABASE_CLIENT", value = var.database_client },
+      { name = "DATABASE_HOST", value = aws_db_instance.postgres.address },
+      { name = "DATABASE_PORT", value = var.database_port },
+      { name = "DATABASE_NAME", value = var.database_name },
+      { name = "DATABASE_USERNAME", value = var.database_username },
+      { name = "DATABASE_PASSWORD", value = var.database_password },
+      { name = "APP_KEYS", value = "toBeModified1,toBeModified2" },
+      { name = "API_TOKEN_SALT", value = "toBeModified" },
+      { name = "ADMIN_JWT_SECRET", value = "toBeModified" },
+      { name = "JWT_SECRET", value = "toBeModified" }
     ]
 
     logConfiguration = {
@@ -189,75 +192,22 @@ resource "aws_ecs_task_definition" "strapi" {
   }])
 
   tags = {
-    Name        = "${var.project_name}-task"
-    Environment = var.environment
-  }
-}
-
-# Application Load Balancer
-resource "aws_lb" "main" {
-  name               = "${var.project_name}-alb"
-  internal           = false
-  load_balancer_type = "application"
-  security_groups    = [aws_security_group.alb.id]
-  subnets            = aws_subnet.public[*].id
-
-  tags = {
-    Name        = "${var.project_name}-alb"
-    Environment = var.environment
-  }
-}
-
-# ALB Target Group
-resource "aws_lb_target_group" "strapi" {
-  name        = "${var.project_name}-tg"
-  port        = var.container_port
-  protocol    = "HTTP"
-  vpc_id      = aws_vpc.main.id
-  target_type = "ip"
-
-  health_check {
-    enabled             = true
-    healthy_threshold   = 2
-    interval            = 30
-    matcher             = "200"
-    path                = "/_health"
-    port                = "traffic-port"
-    protocol            = "HTTP"
-    timeout             = 5
-    unhealthy_threshold = 3
-  }
-
-  tags = {
-    Name        = "${var.project_name}-tg"
-    Environment = var.environment
-  }
-}
-
-# ALB Listener
-resource "aws_lb_listener" "http" {
-  load_balancer_arn = aws_lb.main.arn
-  port              = 80
-  protocol          = "HTTP"
-
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.strapi.arn
+    Name = "${var.project_name}-task"
   }
 }
 
 # ECS Service
 resource "aws_ecs_service" "strapi" {
-  name            = "${var.project_name}-service"
+  name            = var.ecs_service_name
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.strapi.arn
   desired_count   = var.desired_count
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets          = aws_subnet.private[*].id
+    subnets          = local.unique_public_subnets
     security_groups  = [aws_security_group.ecs_tasks.id]
-    assign_public_ip = false
+    assign_public_ip = true
   }
 
   load_balancer {
@@ -272,7 +222,6 @@ resource "aws_ecs_service" "strapi" {
   ]
 
   tags = {
-    Name        = "${var.project_name}-service"
-    Environment = var.environment
+    Name = var.ecs_service_name
   }
 }

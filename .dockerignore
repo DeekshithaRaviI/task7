@@ -2,9 +2,10 @@ node_modules
 .tmp
 .cache
 build
-.env
 .git
+.env
 *.log
+.DS_Store
+.vscode
 .github
 terraform
-README.md
