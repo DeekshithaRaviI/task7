@@ -1,7 +1,7 @@
 # Use Node.js 20 Alpine for smaller image size
 FROM node:20-alpine AS base
 
-# Install dependencies only when needed
+# Install dependencies stage - WITH dev dependencies
 FROM base AS deps
 RUN apk add --no-cache libc6-compat python3 make g++
 WORKDIR /app
@@ -9,7 +9,7 @@ WORKDIR /app
 # Copy package files
 COPY package.json package-lock.json* ./
 
-# Install dependencies - fallback to npm install if no lock file
+# Install ALL dependencies (including dev) for building
 RUN if [ -f package-lock.json ]; then \
       npm ci --legacy-peer-deps; \
     else \
@@ -26,7 +26,7 @@ COPY . .
 ENV NODE_ENV=production
 RUN npm run build
 
-# Production image
+# Production image - with production dependencies only
 FROM base AS runner
 WORKDIR /app
 
@@ -35,6 +35,7 @@ ENV PORT=1337
 ENV HOST=0.0.0.0
 
 # Install production dependencies only
+RUN apk add --no-cache libc6-compat
 COPY package.json package-lock.json* ./
 RUN if [ -f package-lock.json ]; then \
       npm ci --omit=dev --legacy-peer-deps; \
@@ -43,11 +44,12 @@ RUN if [ -f package-lock.json ]; then \
     fi && \
     npm cache clean --force
 
-# Copy built application
+# Copy built application from builder
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/build ./build
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/config ./config
+COPY --from=builder /app/.strapi ./.strapi
 
 # Create necessary directories
 RUN mkdir -p /tmp && chmod 777 /tmp
