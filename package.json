@@ -1,0 +1,26 @@
+{
+  "name": "strapi-ecs-fargate",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Strapi application deployed on AWS ECS Fargate",
+  "scripts": {
+    "develop": "strapi develop",
+    "start": "strapi start",
+    "build": "strapi build",
+    "strapi": "strapi"
+  },
+  "dependencies": {
+    "@strapi/strapi": "^4.15.5",
+    "@strapi/plugin-users-permissions": "^4.15.5",
+    "@strapi/plugin-i18n": "^4.15.5",
+    "pg": "^8.11.3",
+    "better-sqlite3": "^9.2.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.6"
+  },
+  "engines": {
+    "node": ">=18.0.0 <=20.x.x",
+    "npm": ">=6.0.0"
+  }
+}

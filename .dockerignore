@@ -1,0 +1,10 @@
+node_modules
+.tmp
+.cache
+build
+.env
+.git
+*.log
+.github
+terraform
+README.md
