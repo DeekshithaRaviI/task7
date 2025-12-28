@@ -1,7 +1,7 @@
 # Use Node.js 20 Alpine for smaller image size
 FROM node:20-alpine AS base
 
-# Install dependencies stage - WITH dev dependencies
+# Install dependencies stage
 FROM base AS deps
 RUN apk add --no-cache libc6-compat python3 make g++
 WORKDIR /app
@@ -9,12 +9,8 @@ WORKDIR /app
 # Copy package files
 COPY package.json package-lock.json* ./
 
-# Install ALL dependencies (including dev) for building
-RUN if [ -f package-lock.json ]; then \
-      npm ci --legacy-peer-deps; \
-    else \
-      npm install --legacy-peer-deps; \
-    fi
+# Install ALL dependencies using npm install (more flexible than npm ci)
+RUN npm install --legacy-peer-deps
 
 # Build the application
 FROM base AS builder
@@ -23,10 +19,9 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Build Strapi
-ENV NODE_ENV=production
 RUN npm run build
 
-# Production image - with production dependencies only
+# Production image
 FROM base AS runner
 WORKDIR /app
 
@@ -34,14 +29,12 @@ ENV NODE_ENV=production
 ENV PORT=1337
 ENV HOST=0.0.0.0
 
-# Install production dependencies only
+# Install runtime dependencies
 RUN apk add --no-cache libc6-compat
+
+# Copy package files and install production dependencies
 COPY package.json package-lock.json* ./
-RUN if [ -f package-lock.json ]; then \
-      npm ci --omit=dev --legacy-peer-deps; \
-    else \
-      npm install --omit=dev --legacy-peer-deps; \
-    fi && \
+RUN npm install --omit=dev --legacy-peer-deps && \
     npm cache clean --force
 
 # Copy built application from builder
@@ -49,13 +42,12 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/build ./build
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/config ./config
+COPY --from=builder /app/database ./database
 COPY --from=builder /app/.strapi ./.strapi
 
-# Create necessary directories
-RUN mkdir -p /tmp && chmod 777 /tmp
-
-# Create non-root user
-RUN addgroup --system --gid 1001 nodejs && \
+# Create necessary directories and set permissions
+RUN mkdir -p /tmp && chmod 777 /tmp && \
+    addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 strapi && \
     chown -R strapi:nodejs /app
 
