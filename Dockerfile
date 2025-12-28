@@ -1,38 +1,62 @@
-FROM node:18-alpine
+# Use Node.js 20 Alpine for smaller image size
+FROM node:20-alpine AS base
 
-# Set working directory
+# Install dependencies only when needed
+FROM base AS deps
+RUN apk add --no-cache libc6-compat python3 make g++
 WORKDIR /app
 
-# Install dependencies for building
-RUN apk add --no-cache \
-    build-base \
-    gcc \
-    autoconf \
-    automake \
-    zlib-dev \
-    libpng-dev \
-    vips-dev \
-    git
-
 # Copy package files
-COPY package*.json ./
+COPY package.json package-lock.json* ./
 
 # Install dependencies
-RUN npm install --production
+RUN npm ci
 
-# Copy application code
+# Build the application
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Build Strapi admin panel
+# Build Strapi
 ENV NODE_ENV=production
 RUN npm run build
+
+# Production image
+FROM base AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PORT=1337
+ENV HOST=0.0.0.0
+
+# Install production dependencies only
+COPY package.json package-lock.json* ./
+RUN npm ci --only=production && \
+    npm cache clean --force
+
+# Copy built application
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/build ./build
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/config ./config
+
+# Create necessary directories
+RUN mkdir -p /tmp && chmod 777 /tmp
+
+# Create non-root user
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 strapi && \
+    chown -R strapi:nodejs /app
+
+USER strapi
 
 # Expose Strapi port
 EXPOSE 1337
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=40s \
-  CMD node -e "require('http').get('http://localhost:1337/_health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:1337/ || exit 1
 
 # Start Strapi
-CMD ["npm", "start"]
+CMD ["npm", "run", "start"]
