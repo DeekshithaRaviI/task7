@@ -49,7 +49,7 @@ variable "ecs_execution_role_name" {
 variable "ecs_task_role_name" {
   description = "Name of existing ECS task IAM role"
   type        = string
-  default     = "strapi-ecs-ecs-task-role"
+  default     = "deek-strapi-ecs-task-role"
 }
 
 variable "database_client" {
