@@ -10,8 +10,8 @@ on:
 env:
   AWS_REGION: ap-south-1
   ECR_REPOSITORY: dee-strapi
-  ECS_CLUSTER: strapi-ecs-cluster
-  ECS_SERVICE: strapi-ecs-service
+  ECS_CLUSTER: deek-strapi-ecs-cluster
+  ECS_SERVICE: deek-strapi-service
   ECS_TASK_DEFINITION_FAMILY: strapi-ecs-task
   CONTAINER_NAME: strapi
 
