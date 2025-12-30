@@ -150,23 +150,22 @@ resource "aws_ecs_task_definition" "strapi" {
       }]
 
       environment = [
-  { name = "NODE_ENV", value = "production" },
+        { name = "NODE_ENV", value = "production" },
 
-  # Database
-  { name = "DATABASE_CLIENT", value = "postgres" },
-  { name = "DATABASE_HOST", value = aws_db_instance.postgres.address },
-  { name = "DATABASE_PORT", value = "5432" },
-  { name = "DATABASE_NAME", value = var.database_name },
-  { name = "DATABASE_USERNAME", value = var.database_username },
-  { name = "DATABASE_PASSWORD", value = var.database_password },
+        # Database
+        { name = "DATABASE_CLIENT", value = "postgres" },
+        { name = "DATABASE_HOST", value = aws_db_instance.postgres.address },
+        { name = "DATABASE_PORT", value = "5432" },
+        { name = "DATABASE_NAME", value = var.database_name },
+        { name = "DATABASE_USERNAME", value = var.database_username },
+        { name = "DATABASE_PASSWORD", value = var.database_password },
 
-  # Strapi secrets
-  { name = "APP_KEYS", value = "key1,key2" },
-  { name = "API_TOKEN_SALT", value = "token_salt" },
-  { name = "ADMIN_JWT_SECRET", value = "admin_jwt" },
-  { name = "JWT_SECRET", value = "jwt_secret" }
-]
-
+        # Strapi secrets
+        { name = "APP_KEYS", value = "key1,key2" },
+        { name = "API_TOKEN_SALT", value = "token_salt" },
+        { name = "ADMIN_JWT_SECRET", value = "admin_jwt" },
+        { name = "JWT_SECRET", value = "jwt_secret" }
+      ]
 
       logConfiguration = {
         logDriver = "awslogs"
@@ -189,6 +188,21 @@ resource "aws_ecs_task_definition" "strapi" {
 }
 
 ############################
+# ECS Cluster Capacity Providers
+############################
+resource "aws_ecs_cluster_capacity_providers" "main" {
+  cluster_name = aws_ecs_cluster.main.name
+
+  capacity_providers = ["FARGATE_SPOT", "FARGATE"]
+
+  default_capacity_provider_strategy {
+    capacity_provider = "FARGATE_SPOT"
+    weight            = 100
+    base              = 0
+  }
+}
+
+############################
 # ECS Service
 ############################
 resource "aws_ecs_service" "strapi" {
@@ -196,7 +210,12 @@ resource "aws_ecs_service" "strapi" {
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.strapi.arn
   desired_count   = var.desired_count
-  launch_type     = "FARGATE"
+
+  capacity_provider_strategy {
+    capacity_provider = "FARGATE_SPOT"
+    weight            = 100
+    base              = 0
+  }
 
   network_configuration {
     subnets          = local.unique_public_subnets
@@ -212,6 +231,7 @@ resource "aws_ecs_service" "strapi" {
 
   depends_on = [
     aws_lb_listener.http,
-    aws_iam_role_policy_attachment.ecs_task_execution_role_policy
+    aws_iam_role_policy_attachment.ecs_task_execution_role_policy,
+    aws_ecs_cluster_capacity_providers.main
   ]
 }

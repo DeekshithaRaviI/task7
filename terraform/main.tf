@@ -12,6 +12,15 @@ provider "aws" {
   region = var.aws_region
 }
 
+# Local variables
+locals {
+  tags = {
+    Project     = var.project_name
+    Environment = "production"
+    ManagedBy   = "Terraform"
+  }
+}
+
 # Use default VPC
 data "aws_vpc" "default" {
   default = true
@@ -45,9 +54,9 @@ resource "aws_ecs_cluster" "main" {
     value = "enabled"
   }
 
-  tags = {
+  tags = merge(local.tags, {
     Name = "${var.project_name}-cluster"
-  }
+  })
 }
 
 # CloudWatch Log Group
@@ -55,9 +64,9 @@ resource "aws_cloudwatch_log_group" "strapi" {
   name              = "/ecs/${var.project_name}"
   retention_in_days = 7
 
-  tags = {
+  tags = merge(local.tags, {
     Name = "${var.project_name}-logs"
-  }
+  })
 }
 
 # ECR Lifecycle Policy
